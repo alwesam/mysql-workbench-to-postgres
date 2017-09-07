@@ -48,6 +48,7 @@ def remove_lines_with(word, lines):
             toRemove.append(line)
     for line in toRemove:
         lines.remove(line)
+    return toRemove
 
 
 def remove_word(word, lines, numberOfNextWords=0):
@@ -136,6 +137,25 @@ def create_sequences(lines):
             sequence["table"], 
             sequence["column"],
             SEQUENCE_SUFFIX,))
+
+def create_indexes(lines, index_lines):
+    indexes = []
+    lines.append("\n\n\n")
+    for iline in index_lines:
+        index_name = re.search("INDEX `(.*)` \(", iline).group(1)
+        table_name = re.search("index_(.*)_on", index_name).group(1)
+        column_names = re.search("\((.*) ASC\)",iline).group(1).replace("`","\"").replace("ASC","")
+        lines.append("CREATE INDEX \"{0}\" ON \"{1}\".\"{2}\" ({3});\n".format(index_name,SCHEMA,table_name,column_names))
+
+#TODO do it better
+def close_tables(lines):
+    for index in range(len(lines)):
+        line = lines[index]
+        if "PRIMARY" in line and not "CONSTRAINT" in lines[index+1]:
+            lines[index] = line.replace(",", ");")
+            
+
+
 def get_current_schema(lines):
     for line in lines:
         if "CREATE SCHEMA" in line:
@@ -184,7 +204,8 @@ def add_cascade_to_drops(lines):
 def convert(input, output):
     contents = input.read()
     lines = remove_comments(contents).splitlines(True)
-    remove_lines_with("ASC)", lines)
+    #remove_lines_with("ASC)", lines)
+    index_lines = remove_lines_with("INDEX", lines)
     remove_lines_started_with("SET", lines)
     remove_lines_started_with("COLLATE", lines)
     remove_lines_started_with("ENGINE", lines)
@@ -211,6 +232,11 @@ def convert(input, output):
     put_semicolons(lines)
     add_cascade_to_drops(lines)
     create_sequences(lines)
+    ###create indexes
+    create_indexes(lines, index_lines)
+    ###syntax error inadventarly occurs when remove INDEX clauses from tables if
+    ##they are the last clause in the creat table statement
+    close_tables(lines)
     remove_word("AUTO_INCREMENT", lines)
     if SCHEMA != "":
         set_schema(lines);
